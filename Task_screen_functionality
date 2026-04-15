@@ -1,0 +1,10 @@
+Specifikace fungování screeny Moje úkoly:
+
+Filtry:
+- Vlastník úkolu (přiřazený uživatel) - předfiltrováno bude vždy na aktuálního uživatele (tzn moje úkoly)
+- Stav - předfiltrováno bude vždy na Otevřený
+- Fond - bude předfiltrováno na "Vše" - tedy se zobrazí vše bez filtru
+
+Řazení gridu:
+- Podle datumu deadline. Od nejstaršího (prošvihnutý deadline) po nejnovějśí (datum nejvíc v budoucnu)
+

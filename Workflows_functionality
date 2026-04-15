@@ -1,0 +1,12 @@
+V detailu workflow budu moci editovat opravdové workflows. Budu moci editovat:
+    - Kdy se má workflow spustit (po vytvoření, po aktualizaci, po smazání)
+        - Manuálně na stránce fondu ihned (to znamená, že jako uživatel budu mít možnost spustit workflow kdykoliv).
+        - Manuálně na stránce fondu s nastavením data a času
+        - Periodicky například každy měsíc 5.ho
+    - Workflow se seskládává z itemů, které mají návaznosti a posloupnost:
+        - Delay ve dnech - jakmile workflow dojede k tomuto kroku, tak se nastaví zpoždění v daném počtu dní, než se spustí další krok
+        - Task - obsahuje název úkolu, přiřazeného uživatele, stav (Otevřený, Dokončený, On-hold), datum splnění, poznámku, soubory, datum deadlinu vyjádřený jako CREATE DATE + X dní.
+        - Task group - obsahuje pouze název a pod tento item jsou jednotlivé tasky, které až kdyź jsou všechny splněny, tak se spustí další krok
+
+
+Potřebuji taktéž mechanismus, kterým řeknu, že například po splnění nějakého tasku nebo task group se mají vytvořit dalśí tasky a jaké.

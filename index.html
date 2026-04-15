@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projektovy system fondu</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="loginScreen" class="login-shell">
+      <section class="login-card" aria-label="Prihlaseni">
+        <p class="eyebrow">Projektovy system</p>
+        <h1>Prihlaseni</h1>
+
+        <form id="loginForm" class="login-form">
+          <label for="usernameInput">Uzivatelske jmeno</label>
+          <input id="usernameInput" name="username" type="text" autocomplete="username" required />
+
+          <label for="passwordInput">Heslo</label>
+          <input id="passwordInput" name="password" type="password" autocomplete="current-password" required />
+
+          <p id="loginError" class="login-error hidden" role="alert">Neplatne uzivatelske jmeno nebo heslo.</p>
+
+          <button class="primary-btn" type="submit">Prihlasit se</button>
+        </form>
+      </section>
+    </main>
+
+    <main id="appShell" class="app-shell hidden">
+      <nav class="main-menu" aria-label="Hlavni menu">
+        <button id="menuMyTasksButton" class="menu-btn" type="button">Moje ukoly</button>
+        <button id="menuFundsButton" class="menu-btn active" type="button">Fondy</button>
+        <button id="menuUsersButton" class="menu-btn" type="button">Uzivatele</button>
+        <button id="menuWorkflowsButton" class="menu-btn" type="button">Workflows</button>
+        <button id="logoutButton" class="menu-btn menu-btn-logout" type="button">Odhlasit se</button>
+      </nav>
+
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Projektovy system</p>
+          <h1 id="screenTitle">Fondy</h1>
+        </div>
+        <button id="addFundButton" class="primary-btn" type="button">PRIDANI FONDU</button>
+        <button id="addUserButton" class="primary-btn hidden" type="button">PRIDANI UZIVATELE</button>
+        <button id="addWorkflowButton" class="primary-btn hidden" type="button">PRIDANI WORKFLOW</button>
+      </header>
+
+      <section id="fundsScreen" class="grid-panel" aria-label="Seznam fondu">
+        <table>
+          <thead>
+            <tr>
+              <th>Nazev fondu</th>
+              <th>Stav</th>
+            </tr>
+          </thead>
+          <tbody id="fundTableBody"></tbody>
+        </table>
+        <div id="fundsPagination" class="pagination-bar"></div>
+      </section>
+
+      <section id="myTasksScreen" class="grid-panel hidden" aria-label="Moje ukoly">
+        <div class="task-filters">
+          <div>
+            <label for="myTasksOwnerFilter">Vlastnik ukolu</label>
+            <select id="myTasksOwnerFilter"></select>
+          </div>
+          <div>
+            <label for="myTasksStatusFilter">Stav</label>
+            <select id="myTasksStatusFilter">
+              <option value="all">Vse</option>
+              <option value="Otevreny">Otevreny</option>
+              <option value="Dokonceny">Dokonceny</option>
+              <option value="On-hold">On-hold</option>
+            </select>
+          </div>
+          <div>
+            <label for="myTasksFundFilter">Fond</label>
+            <select id="myTasksFundFilter"></select>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Fond</th>
+              <th>Workflow</th>
+              <th>Vlastnik</th>
+              <th>Deadline</th>
+              <th>Stav</th>
+            </tr>
+          </thead>
+          <tbody id="myTasksTableBody"></tbody>
+        </table>
+        <div id="myTasksPagination" class="pagination-bar"></div>
+      </section>
+
+      <section id="fundDetailScreen" class="detail-panel hidden" aria-label="Detail fondu">
+        <div class="detail-header">
+          <button id="backToFundsButton" class="ghost-btn" type="button">Zpet na fondy</button>
+          <h2 id="fundDetailTitle">Detail fondu</h2>
+        </div>
+
+        <section class="workflow-section">
+          <div class="section-head">
+            <h3>Spustene workflows</h3>
+            <button id="runWorkflowButton" class="primary-btn" type="button">SPUSTIT WORKFLOW</button>
+          </div>
+          <div class="group-table-wrap">
+            <table class="group-table">
+              <thead>
+                <tr>
+                  <th>Workflow</th>
+                  <th>Typ spusteni</th>
+                  <th>Stav</th>
+                  <th>Plan</th>
+                  <th>Akce</th>
+                </tr>
+              </thead>
+              <tbody id="fundWorkflowRunTableBody"></tbody>
+            </table>
+          </div>
+          <div id="fundRunsPagination" class="pagination-bar"></div>
+        </section>
+
+        <section id="fundRunTasksPanel" class="workflow-section hidden">
+          <h3 id="fundRunTasksTitle">Tasky workflow</h3>
+          <div class="group-table-wrap">
+            <table class="group-table">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Uzivatel</th>
+                  <th>Task group</th>
+                  <th>Deadline</th>
+                  <th>Stav</th>
+                </tr>
+              </thead>
+              <tbody id="fundRunTaskTableBody"></tbody>
+            </table>
+          </div>
+          <div id="runTasksPagination" class="pagination-bar"></div>
+        </section>
+      </section>
+
+      <section id="fundTaskDetailScreen" class="detail-panel hidden" aria-label="Detail tasku">
+        <div class="detail-header">
+          <button id="backToFundWorkflowsButton" class="ghost-btn" type="button">Zpět</button>
+          <h2 id="fundTaskDetailTitle">Detail tasku</h2>
+        </div>
+
+        <section class="workflow-section">
+          <h3>Atributy tasku</h3>
+          <div class="task-attributes-grid">
+            <div>
+              <span class="attr-label">Fond</span>
+              <span id="taskAttrFund" class="attr-value">-</span>
+            </div>
+            <div>
+              <span class="attr-label">Workflow</span>
+              <span id="taskAttrWorkflow" class="attr-value">-</span>
+            </div>
+            <div>
+              <span class="attr-label">Task group</span>
+              <span id="taskAttrTaskGroup" class="attr-value">-</span>
+            </div>
+            <div>
+              <span class="attr-label">Prirazeny uzivatel</span>
+              <span id="taskAttrAssignee" class="attr-value">-</span>
+            </div>
+            <div>
+              <span class="attr-label">Deadline</span>
+              <span id="taskAttrDeadline" class="attr-value">-</span>
+            </div>
+          </div>
+
+          <label for="taskDetailStatusSelect">Stav</label>
+          <select id="taskDetailStatusSelect">
+            <option value="Otevreny">Otevreny</option>
+            <option value="Dokonceny">Dokonceny</option>
+            <option value="On-hold">On-hold</option>
+          </select>
+
+          <label for="taskDetailNoteInput">Poznamka</label>
+          <textarea id="taskDetailNoteInput" rows="7" placeholder="Poznamky k tasku"></textarea>
+        </section>
+
+        <section class="workflow-section">
+          <h3>Prilohy</h3>
+          <div class="inline-btns">
+            <input id="taskAttachmentInput" type="file" multiple />
+          </div>
+          <div class="group-table-wrap">
+            <table class="group-table">
+              <thead>
+                <tr>
+                  <th>Nazev</th>
+                  <th>Kdo nahral</th>
+                  <th>Kdy</th>
+                  <th>Velikost</th>
+                  <th>Akce</th>
+                </tr>
+              </thead>
+              <tbody id="taskAttachmentTableBody"></tbody>
+            </table>
+          </div>
+          <div id="attachmentsPagination" class="pagination-bar"></div>
+        </section>
+
+        <div class="dialog-actions">
+          <button id="saveTaskDetailButton" class="primary-btn" type="button">Ulozit zmeny</button>
+        </div>
+      </section>
+
+      <section id="usersScreen" class="grid-panel hidden" aria-label="Seznam uzivatelu">
+        <table>
+          <thead>
+            <tr>
+              <th>Uzivatelske jmeno</th>
+              <th>Heslo</th>
+              <th>Stav</th>
+              <th>Akce</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody"></tbody>
+        </table>
+        <div id="usersPagination" class="pagination-bar"></div>
+      </section>
+
+      <section id="workflowsScreen" class="grid-panel hidden" aria-label="Seznam workflows">
+        <table>
+          <thead>
+            <tr>
+              <th>Nazev workflow</th>
+            </tr>
+          </thead>
+          <tbody id="workflowTableBody"></tbody>
+        </table>
+        <div id="workflowsPagination" class="pagination-bar"></div>
+      </section>
+
+      <section id="workflowDetailScreen" class="detail-panel hidden" aria-label="Detail workflow">
+        <div class="detail-header">
+          <button id="backToWorkflowsButton" class="ghost-btn" type="button">Zpet na workflows</button>
+          <h2 id="workflowDetailTitle">Detail workflow</h2>
+        </div>
+
+        <div class="workflow-editor">
+          <section class="workflow-section">
+            <h3>Zaklad workflow</h3>
+            <label for="workflowDetailNameInput">Nazev workflow</label>
+            <input id="workflowDetailNameInput" type="text" maxlength="120" />
+          </section>
+
+          <section class="workflow-section">
+            <div class="section-head">
+              <h3>Workflow itemy</h3>
+              <div class="inline-btns">
+                <button id="addDelayItemButton" class="ghost-btn" type="button">Pridat Delay</button>
+                <button id="addTaskItemButton" class="ghost-btn" type="button">Pridat Task</button>
+                <button id="addTaskGroupItemButton" class="ghost-btn" type="button">Pridat Task group</button>
+              </div>
+            </div>
+
+            <p id="workflowDetailMessage" class="detail-note hidden" role="status"></p>
+            <div id="workflowItemsContainer" class="workflow-items"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="addFundDialog" class="fund-dialog">
+      <form id="addFundForm" method="dialog">
+        <h2>Novy fond</h2>
+        <label for="fundNameInput">Nazev fondu</label>
+        <input id="fundNameInput" name="fundName" type="text" maxlength="120" required />
+
+        <div class="dialog-actions">
+          <button id="cancelDialogButton" class="ghost-btn" type="button">Zrusit</button>
+          <button class="primary-btn" type="submit">Pridat</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="userDialog" class="fund-dialog">
+      <form id="userForm" method="dialog">
+        <h2 id="userDialogTitle">Novy uzivatel</h2>
+        <label for="newUsernameInput">Uzivatelske jmeno</label>
+        <input id="newUsernameInput" name="newUsername" type="text" maxlength="120" required />
+
+        <label for="newPasswordInput">Heslo</label>
+        <input id="newPasswordInput" name="newPassword" type="text" maxlength="120" required />
+
+        <p id="userDialogError" class="login-error hidden" role="alert">Uzivatelske jmeno uz existuje.</p>
+
+        <div class="dialog-actions">
+          <button id="cancelUserDialogButton" class="ghost-btn" type="button">Zrusit</button>
+          <button class="primary-btn" type="submit">Ulozit</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="workflowDialog" class="fund-dialog">
+      <form id="workflowForm" method="dialog">
+        <h2>Novy workflow</h2>
+        <label for="workflowNameInput">Nazev workflow</label>
+        <input id="workflowNameInput" name="workflowName" type="text" maxlength="120" required />
+
+        <p id="workflowDialogError" class="login-error hidden" role="alert">Nazev workflow uz existuje.</p>
+
+        <div class="dialog-actions">
+          <button id="cancelWorkflowDialogButton" class="ghost-btn" type="button">Zrusit</button>
+          <button class="primary-btn" type="submit">Pridat</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="runWorkflowDialog" class="fund-dialog">
+      <form id="runWorkflowForm" method="dialog">
+        <h2>Spustit workflow</h2>
+
+        <label for="runWorkflowSelect">Workflow</label>
+        <select id="runWorkflowSelect" required></select>
+
+        <fieldset class="radio-group">
+          <legend>Rezim spusteni</legend>
+          <label><input type="radio" name="runWorkflowMode" value="immediate" checked /> Spustit hned</label>
+          <label><input type="radio" name="runWorkflowMode" value="scheduled" /> Naplanovat spusteni na datum</label>
+          <label><input type="radio" name="runWorkflowMode" value="periodic" /> Spustit periodicky</label>
+        </fieldset>
+
+        <div id="runModeScheduledFields" class="inline-fields hidden">
+          <div>
+            <label for="runWorkflowScheduledDate">Datum spusteni</label>
+            <input id="runWorkflowScheduledDate" type="date" />
+          </div>
+        </div>
+
+        <div id="runModePeriodicFields" class="inline-fields hidden">
+          <div>
+            <label for="runWorkflowEveryMonths">Kazdy X mesic</label>
+            <input id="runWorkflowEveryMonths" type="number" min="1" value="1" />
+          </div>
+          <div>
+            <label for="runWorkflowDayInMonth">Y-ty den v mesici</label>
+            <input id="runWorkflowDayInMonth" type="number" min="1" max="31" value="1" />
+          </div>
+        </div>
+
+        <p id="runWorkflowError" class="login-error hidden" role="alert">Nelze spustit workflow.</p>
+
+        <div class="dialog-actions">
+          <button id="cancelRunWorkflowDialogButton" class="ghost-btn" type="button">Zrusit</button>
+          <button class="primary-btn" type="submit">Spustit</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
