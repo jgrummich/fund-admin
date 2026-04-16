@@ -1,6 +1,6 @@
 # Projektovy system fondu
 
-Jednoducha webova aplikace pro evidenci fondu.
+Webova aplikace pro evidenci fondu s backendem nad PostgreSQL.
 
 ## Funkce
 - Prvotni obrazovka prihlaseni (uzivatelske jmeno + heslo)
@@ -24,16 +24,36 @@ Jednoducha webova aplikace pro evidenci fondu.
 - Klik na workflow run zobrazi jeho vygenerovane tasky s deadline datem
 - Tasky se oteviraji pres detail tasku
 - V detailu tasku lze upravit stav, zapisovat poznamky a spravovat prilohy
-- Prilohy ukladaji metadata: nazev souboru, kdo nahral, kdy a velikost
+- Prilohy se realne nahravaji pres backend (metadata i soubor)
 - Lze smazat cely workflow run vcetne jeho tasku
-- Data se ukladaji do localStorage a zustavaji po restartu prohlizece
+- Data aplikace se ukladaji do PostgreSQL (bez localStorage)
+
+## Technologie
+- Frontend: HTML/CSS/vanilla JS
+- Backend: Node.js + Express
+- Databaze: PostgreSQL
+- Upload souboru: local storage nebo S3 kompatibilni object storage (dle konfigurace)
 
 ## Spusteni
-1. Otevrete soubor index.html v prohlizeci.
+1. Zkopirujte konfiguraci:
+	- Windows PowerShell: `Copy-Item .env.example .env`
+2. Spustte PostgreSQL:
+	- `docker compose up -d`
+3. Nainstalujte zavislosti:
+	- `npm install`
+4. Spustte aplikaci:
+	- `npm run dev`
+5. Otevrete v prohlizeci:
+	- `http://localhost:5500`
+
+## Produkcni poznamka k uploadu
+- `STORAGE_PROVIDER=local`: soubory se ukladaji do slozky `uploads/`.
+- `STORAGE_PROVIDER=s3`: soubory se ukladaji do S3 (nebo S3 kompatibilniho hostingu).
+- Pro hosting doplnte hodnoty `S3_*` v `.env`.
 
 ## Prihlaseni
 - Uzivatelske jmeno: jiri.grummich
 - Heslo: PrvniPrihlaseni1
 
 ## Poznamka
-Aplikace je zamerne bez externich zavislosti, aby fungovala i bez stahovani balicku z npm.
+Po prvnim startu backend automaticky vytvori potrebne tabulky a inicialni data.

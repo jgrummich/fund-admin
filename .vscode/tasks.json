@@ -4,11 +4,10 @@
 		{
 			"label": "Run Fund App",
 			"type": "shell",
-			"command": "python",
+			"command": "npm",
 			"args": [
-				"-m",
-				"http.server",
-				"5500"
+				"run",
+				"dev"
 			],
 			"isBackground": true,
 			"group": "build"
@@ -21,7 +20,7 @@
 				"/c",
 				"start",
 				"",
-				"index.html"
+				"http://localhost:5500"
 			],
 			"isBackground": false,
 			"group": "build"

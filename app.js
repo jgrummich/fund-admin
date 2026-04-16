@@ -39,7 +39,6 @@ const WorkflowRunStatus = Object.freeze({
 });
 
 const statusOptions = Object.values(FundStatus);
-const STORAGE_KEY = "project-system-state-v1";
 const PAGE_SIZE = 10;
 
 function createDefaultUser() {
@@ -211,7 +210,10 @@ function normalizeWorkflowRunTask(task, runCreatedAt) {
           .filter((attachment) => attachment && typeof attachment.name === "string")
           .map((attachment) => ({
             id: attachment.id || crypto.randomUUID(),
+            uploadId: typeof attachment.uploadId === "string" ? attachment.uploadId : "",
             name: attachment.name,
+            url: typeof attachment.url === "string" ? attachment.url : "",
+            storageKey: typeof attachment.storageKey === "string" ? attachment.storageKey : "",
             uploadedByUserId: typeof attachment.uploadedByUserId === "string" ? attachment.uploadedByUserId : "",
             uploadedAt: typeof attachment.uploadedAt === "string" ? attachment.uploadedAt : new Date().toISOString(),
             sizeBytes: Number.isFinite(Number(attachment.sizeBytes)) ? Math.max(0, Number(attachment.sizeBytes)) : 0
@@ -237,84 +239,229 @@ function normalizeWorkflowRun(run) {
   };
 }
 
-function loadAppState() {
+function normalizeLoadedState(parsed) {
   const defaults = createDefaultState();
 
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return defaults;
-    }
+  const loadedUsers = Array.isArray(parsed?.users)
+    ? parsed.users
+        .filter((user) => user && typeof user.username === "string" && typeof user.password === "string")
+        .map((user) => ({
+          id: user.id || crypto.randomUUID(),
+          username: user.username,
+          password: user.password,
+          isActive: Boolean(user.isActive)
+        }))
+    : [];
 
-    const parsed = JSON.parse(raw);
-    const loadedUsers = Array.isArray(parsed?.users)
-      ? parsed.users
-          .filter((user) => user && typeof user.username === "string" && typeof user.password === "string")
-          .map((user) => ({
-            id: user.id || crypto.randomUUID(),
-            username: user.username,
-            password: user.password,
-            isActive: Boolean(user.isActive)
-          }))
-      : [];
+  const usersResult = loadedUsers.length > 0 ? loadedUsers : defaults.users;
+  const fallbackAssigneeUserId = usersResult[0]?.id || "";
 
-    const usersResult = loadedUsers.length > 0 ? loadedUsers : defaults.users;
-    const fallbackAssigneeUserId = usersResult[0]?.id || "";
+  const fundsResult = Array.isArray(parsed?.funds)
+    ? parsed.funds
+        .filter((fund) => fund && typeof fund.name === "string")
+        .map((fund) => ({
+          id: fund.id || crypto.randomUUID(),
+          name: fund.name,
+          status: Object.values(FundStatus).includes(fund.status) ? fund.status : FundStatus.ONBOARDING,
+          workflowRuns: Array.isArray(fund.workflowRuns) ? fund.workflowRuns.map((run) => normalizeWorkflowRun(run)) : []
+        }))
+    : [];
 
-    const fundsResult = Array.isArray(parsed?.funds)
-      ? parsed.funds
-          .filter((fund) => fund && typeof fund.name === "string")
-          .map((fund) => ({
-            id: fund.id || crypto.randomUUID(),
-            name: fund.name,
-            status: Object.values(FundStatus).includes(fund.status) ? fund.status : FundStatus.ONBOARDING,
-            workflowRuns: Array.isArray(fund.workflowRuns) ? fund.workflowRuns.map((run) => normalizeWorkflowRun(run)) : []
-          }))
-      : [];
+  const workflowsResult = Array.isArray(parsed?.workflows)
+    ? parsed.workflows
+        .filter((workflow) => workflow && typeof workflow.name === "string")
+        .map((workflow) => ({
+          id: workflow.id || crypto.randomUUID(),
+          name: workflow.name,
+          items: Array.isArray(workflow.items)
+            ? workflow.items
+                .map((item) => normalizeWorkflowItem(item, fallbackAssigneeUserId))
+                .filter((item) => Object.values(WorkflowItemType).includes(item.type))
+            : [createWorkflowItem(WorkflowItemType.TASK, fallbackAssigneeUserId)]
+        }))
+    : [];
 
-    const workflowsResult = Array.isArray(parsed?.workflows)
-      ? parsed.workflows
-          .filter((workflow) => workflow && typeof workflow.name === "string")
-          .map((workflow) => ({
-            id: workflow.id || crypto.randomUUID(),
-            name: workflow.name,
-            items: Array.isArray(workflow.items)
-              ? workflow.items
-                  .map((item) => normalizeWorkflowItem(item, fallbackAssigneeUserId))
-                  .filter((item) => Object.values(WorkflowItemType).includes(item.type))
-              : [createWorkflowItem(WorkflowItemType.TASK, fallbackAssigneeUserId)]
-          }))
-      : [];
-
-    return {
-      funds: fundsResult.length > 0 ? fundsResult : defaults.funds,
-      users: usersResult,
-      workflows: workflowsResult.length > 0 ? workflowsResult : defaults.workflows
-    };
-  } catch {
-    return defaults;
-  }
+  return {
+    funds: fundsResult.length > 0 ? fundsResult : defaults.funds,
+    users: usersResult,
+    workflows: workflowsResult.length > 0 ? workflowsResult : defaults.workflows
+  };
 }
 
 let funds = [];
 let users = [];
 let workflows = [];
+let stateVersion = null;
+
+let persistTimerId = null;
+let pendingPersistSnapshot = null;
+let persistInFlight = Promise.resolve();
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, options);
+  const isJson = (response.headers.get("content-type") || "").includes("application/json");
+  const data = isJson ? await response.json() : null;
+  if (!response.ok) {
+    const message = data?.message || `Request failed: ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+async function loadAppStateFromApi() {
+  try {
+    const response = await apiRequest("/api/state");
+    return {
+      state: normalizeLoadedState(response?.state || {}),
+      version: Number.isInteger(Number(response?.version)) ? Number(response.version) : 0
+    };
+  } catch (error) {
+    console.error("Failed to load state from API, using defaults", error);
+    return {
+      state: createDefaultState(),
+      version: null
+    };
+  }
+}
+
+function applyLoadedState(loadedState) {
+  funds = loadedState.state.funds;
+  users = loadedState.state.users;
+  workflows = loadedState.state.workflows;
+  stateVersion = loadedState.version;
+}
+
+async function reloadStateAfterConflict() {
+  if (persistTimerId !== null) {
+    clearTimeout(persistTimerId);
+    persistTimerId = null;
+  }
+
+  pendingPersistSnapshot = null;
+  await discardTaskDetailDraft();
+
+  const loadedState = await loadAppStateFromApi();
+  applyLoadedState(loadedState);
+
+  editingUserId = null;
+  selectedWorkflowId = null;
+  selectedFundId = null;
+  selectedWorkflowRunId = null;
+  selectedRunTaskId = null;
+  previousTaskScreen = Screen.FUND_DETAIL;
+  resetMyTasksFilters();
+  paginationState.myTasks = 1;
+
+  renderFunds();
+  renderUsers();
+  renderWorkflows();
+  setActiveScreen(Screen.FUNDS);
+  alert("Data byla mezitim zmenena v jine relaci. Aplikace nacetla aktualni stav ze serveru.");
+}
+
+function queuePersistSnapshot(snapshot) {
+  pendingPersistSnapshot = snapshot;
+
+  if (persistTimerId !== null) {
+    clearTimeout(persistTimerId);
+  }
+
+  persistTimerId = window.setTimeout(() => {
+    const stateToPersist = pendingPersistSnapshot;
+    pendingPersistSnapshot = null;
+    persistTimerId = null;
+
+    persistInFlight = persistInFlight
+      .catch(() => {})
+      .then(() =>
+        apiRequest("/api/state", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            state: stateToPersist,
+            expectedVersion: stateVersion
+          })
+        })
+      )
+      .then((response) => {
+        stateVersion = Number.isInteger(Number(response?.version)) ? Number(response.version) : stateVersion;
+      })
+      .catch((error) => {
+        if (error.status === 409) {
+          return reloadStateAfterConflict();
+        }
+        console.error("Failed to persist state to API", error);
+      });
+  }, 200);
+}
 
 function persistAppState() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      funds,
-      users,
-      workflows
-    })
+  queuePersistSnapshot({
+    funds,
+    users,
+    workflows
+  });
+}
+
+async function uploadAttachmentFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiRequest("/api/uploads", {
+    method: "POST",
+    body: formData
+  });
+}
+
+async function deleteUploadedAttachment(uploadId) {
+  if (!uploadId) {
+    return;
+  }
+  try {
+    await apiRequest(`/api/uploads/${uploadId}`, { method: "DELETE" });
+  } catch (error) {
+    console.error("Failed to delete uploaded file", error);
+  }
+}
+
+function cloneAttachments(attachments) {
+  return Array.isArray(attachments) ? attachments.map((attachment) => ({ ...attachment })) : [];
+}
+
+function getAttachmentUploadIds(attachments) {
+  return new Set(
+    (Array.isArray(attachments) ? attachments : [])
+      .map((attachment) => attachment?.uploadId)
+      .filter((uploadId) => typeof uploadId === "string" && uploadId)
   );
 }
 
-const loadedState = loadAppState();
-funds = loadedState.funds;
-users = loadedState.users;
-workflows = loadedState.workflows;
+function getRemovedTaskDetailUploadIds() {
+  const originalUploadIds = getAttachmentUploadIds(taskDetailOriginalAttachments);
+  const currentUploadIds = getAttachmentUploadIds(taskDetailDraft?.attachments);
+  return [...originalUploadIds].filter((uploadId) => !currentUploadIds.has(uploadId));
+}
+
+function getUnsavedTaskDetailUploadIds() {
+  const originalUploadIds = getAttachmentUploadIds(taskDetailOriginalAttachments);
+  const currentUploadIds = getAttachmentUploadIds(taskDetailDraft?.attachments);
+  return [...currentUploadIds].filter((uploadId) => !originalUploadIds.has(uploadId));
+}
+
+async function deleteUploadedAttachments(uploadIds) {
+  await Promise.all(uploadIds.map((uploadId) => deleteUploadedAttachment(uploadId)));
+}
+
+async function discardTaskDetailDraft() {
+  if (taskDetailDraft) {
+    await deleteUploadedAttachments(getUnsavedTaskDetailUploadIds());
+  }
+
+  taskDetailDraft = null;
+  taskDetailOriginalAttachments = [];
+}
 
 let currentScreen = Screen.FUNDS;
 let editingUserId = null;
@@ -323,6 +470,7 @@ let selectedFundId = null;
 let selectedWorkflowRunId = null;
 let selectedRunTaskId = null;
 let taskDetailDraft = null;
+let taskDetailOriginalAttachments = [];
 let currentUserId = null;
 let previousTaskScreen = Screen.FUND_DETAIL;
 let myTasksFilters = {
@@ -1199,9 +1347,12 @@ function renderTaskAttachmentRows() {
       const index = (paged.page - 1) * PAGE_SIZE + offsetIndex;
       const uploadedBy = findUserById(attachment.uploadedByUserId)?.username || "-";
       const uploadedAt = toDateOnlyString(attachment.uploadedAt) || "-";
+      const fileNameCell = attachment.url
+        ? `<a href="${attachment.url}" target="_blank" rel="noopener noreferrer">${attachment.name}</a>`
+        : attachment.name;
       return `
         <tr>
-          <td>${attachment.name}</td>
+          <td>${fileNameCell}</td>
           <td>${uploadedBy}</td>
           <td>${uploadedAt}</td>
           <td>${formatBytes(attachment.sizeBytes)}</td>
@@ -1261,8 +1412,9 @@ function openTaskDetail(runId, taskId, sourceScreen = Screen.FUND_DETAIL) {
   taskDetailDraft = {
     status: task.status,
     note: task.note || "",
-    attachments: Array.isArray(task.attachments) ? task.attachments.map((attachment) => ({ ...attachment })) : []
+    attachments: cloneAttachments(task.attachments)
   };
+  taskDetailOriginalAttachments = cloneAttachments(task.attachments);
 
   renderTaskDetail();
   setActiveScreen(Screen.FUND_TASK_DETAIL);
@@ -1462,39 +1614,41 @@ function addWorkflowItem(type) {
   renderWorkflowDetail();
 }
 
-menuFundsButton.addEventListener("click", () => {
+menuFundsButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   selectedFundId = null;
   selectedWorkflowRunId = null;
   selectedRunTaskId = null;
-  taskDetailDraft = null;
   setActiveScreen(Screen.FUNDS);
 });
 
-menuMyTasksButton.addEventListener("click", () => {
+menuMyTasksButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   selectedFundId = null;
   selectedWorkflowRunId = null;
   selectedRunTaskId = null;
-  taskDetailDraft = null;
   resetMyTasksFilters();
   paginationState.myTasks = 1;
   setActiveScreen(Screen.MY_TASKS);
 });
 
-menuUsersButton.addEventListener("click", () => {
+menuUsersButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   setActiveScreen(Screen.USERS);
 });
 
-menuWorkflowsButton.addEventListener("click", () => {
+menuWorkflowsButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   setActiveScreen(Screen.WORKFLOWS);
 });
 
-logoutButton.addEventListener("click", () => {
+logoutButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   currentUserId = null;
   selectedFundId = null;
   selectedWorkflowRunId = null;
   selectedRunTaskId = null;
   selectedWorkflowId = null;
-  taskDetailDraft = null;
   previousTaskScreen = Screen.FUND_DETAIL;
   resetMyTasksFilters();
   paginationState.myTasks = 1;
@@ -1528,14 +1682,15 @@ backToWorkflowsButton.addEventListener("click", () => {
   setActiveScreen(Screen.WORKFLOWS);
 });
 
-backToFundsButton.addEventListener("click", () => {
+backToFundsButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   selectedWorkflowRunId = null;
   selectedRunTaskId = null;
-  taskDetailDraft = null;
   setActiveScreen(Screen.FUNDS);
 });
 
-backToFundWorkflowsButton.addEventListener("click", () => {
+backToFundWorkflowsButton.addEventListener("click", async () => {
+  await discardTaskDetailDraft();
   setActiveScreen(previousTaskScreen);
 });
 
@@ -1731,40 +1886,55 @@ taskAttachmentTableBody.addEventListener("click", (event) => {
     return;
   }
 
-  taskDetailDraft.attachments.splice(index, 1);
+  const [removedAttachment] = taskDetailDraft.attachments.splice(index, 1);
+  if (!removedAttachment) {
+    return;
+  }
+
   renderTaskAttachmentRows();
 });
 
-taskAttachmentInput.addEventListener("change", () => {
+taskAttachmentInput.addEventListener("change", async () => {
   if (!taskDetailDraft) {
     return;
   }
 
   const files = Array.from(taskAttachmentInput.files || []);
-  files.forEach((file) => {
-    taskDetailDraft.attachments.push({
-      id: crypto.randomUUID(),
-      name: file.name,
-      uploadedByUserId: currentUserId || "",
-      uploadedAt: new Date().toISOString(),
-      sizeBytes: file.size
-    });
-  });
+  for (const file of files) {
+    try {
+      const uploaded = await uploadAttachmentFile(file);
+      taskDetailDraft.attachments.push({
+        id: crypto.randomUUID(),
+        uploadId: uploaded.id,
+        name: uploaded.name,
+        url: uploaded.url,
+        storageKey: uploaded.storageKey,
+        uploadedByUserId: currentUserId || "",
+        uploadedAt: uploaded.uploadedAt || new Date().toISOString(),
+        sizeBytes: uploaded.sizeBytes
+      });
+    } catch (error) {
+      console.error("Attachment upload failed", error);
+      alert(`Soubor ${file.name} se nepodarilo nahrat.`);
+    }
+  }
 
   taskAttachmentInput.value = "";
   renderTaskAttachmentRows();
 });
 
-saveTaskDetailButton.addEventListener("click", () => {
+saveTaskDetailButton.addEventListener("click", async () => {
   const selected = findSelectedRunTask();
   if (!selected || !taskDetailDraft) {
     return;
   }
 
   const { fund, run, task } = selected;
+  const removedUploadIds = getRemovedTaskDetailUploadIds();
   task.status = taskDetailDraft.status;
   task.note = taskDetailDraft.note;
-  task.attachments = taskDetailDraft.attachments.map((attachment) => ({ ...attachment }));
+  task.attachments = cloneAttachments(taskDetailDraft.attachments);
+  taskDetailOriginalAttachments = cloneAttachments(task.attachments);
 
   if (run.status === WorkflowRunStatus.SCHEDULED) {
     run.status = WorkflowRunStatus.RUNNING;
@@ -1779,6 +1949,7 @@ saveTaskDetailButton.addEventListener("click", () => {
   persistAppState();
   renderFundWorkflowRuns(fund);
   renderTaskDetail();
+  await deleteUploadedAttachments(removedUploadIds);
 });
 
 taskDetailStatusSelect.addEventListener("input", () => {
@@ -2085,12 +2256,6 @@ workflowItemsContainer.addEventListener("input", (event) => {
   }
 });
 
-renderFunds();
-renderUsers();
-renderWorkflows();
-setActiveScreen(Screen.FUNDS);
-persistAppState();
-
 wirePagination(fundsPagination);
 wirePagination(myTasksPagination);
 wirePagination(usersPagination);
@@ -2098,3 +2263,15 @@ wirePagination(workflowsPagination);
 wirePagination(fundRunsPagination);
 wirePagination(runTasksPagination);
 wirePagination(attachmentsPagination);
+
+async function initializeApp() {
+  const loadedState = await loadAppStateFromApi();
+  applyLoadedState(loadedState);
+
+  renderFunds();
+  renderUsers();
+  renderWorkflows();
+  setActiveScreen(Screen.FUNDS);
+}
+
+initializeApp();
